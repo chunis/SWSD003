@@ -670,15 +670,15 @@ void apps_common_lr11xx_irq_process( const void* context, lr11xx_system_irq_mask
 
         if( ( irq_regs & LR11XX_SYSTEM_IRQ_CAD_DONE ) == LR11XX_SYSTEM_IRQ_CAD_DONE )
         {
-            HAL_DBG_TRACE_INFO( "CAD done\n" );
+            //HAL_DBG_TRACE_INFO( "CAD done\n" );
             if( ( irq_regs & LR11XX_SYSTEM_IRQ_CAD_DETECTED ) == LR11XX_SYSTEM_IRQ_CAD_DETECTED )
             {
-                HAL_DBG_TRACE_INFO( "Channel activity detected\n" );
+                //HAL_DBG_TRACE_INFO( "Channel activity detected\n" );
                 on_cad_done_detected( );
             }
             else
             {
-                HAL_DBG_TRACE_INFO( "No channel activity detected\n" );
+                //HAL_DBG_TRACE_INFO( "No channel activity detected\n" );
                 on_cad_done_undetected( );
             }
         }
