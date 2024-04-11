@@ -63,7 +63,7 @@ extern "C" {
 symbols. Threshold used to decide if there is a LoRa activity.
  */
 #ifndef CAD_DETECT_PEAK
-#define CAD_DETECT_PEAK 22
+#define CAD_DETECT_PEAK 21
 #endif
 
 /*!
@@ -96,7 +96,7 @@ symbols. Threshold used to decide if there is a LoRa activity.
  *  to optimize detection.
  */
 #ifndef USER_PROVIDED_CAD_PARAMETERS
-#define USER_PROVIDED_CAD_PARAMETERS false
+#define USER_PROVIDED_CAD_PARAMETERS true
 #endif
 
 /*!
@@ -105,7 +105,7 @@ symbols. Threshold used to decide if there is a LoRa activity.
  *  starting a new CAD
  */
 #ifndef DELAY_MS_BEFORE_CAD
-#define DELAY_MS_BEFORE_CAD 900
+#define DELAY_MS_BEFORE_CAD 500
 #endif
 /*
  * -----------------------------------------------------------------------------

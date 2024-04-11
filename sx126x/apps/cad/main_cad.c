@@ -55,6 +55,10 @@
  * --- PRIVATE MACROS-----------------------------------------------------------
  */
 
+#define DOUBLE_CAD_MODE
+#define SINGLE_CAD_SYMBAL_NUM SX126X_CAD_01_SYMB
+#define DOUBLE_CAD_SYMBAL_NUM SX126X_CAD_02_SYMB
+
 /*
  * -----------------------------------------------------------------------------
  * --- PRIVATE CONSTANTS -------------------------------------------------------
@@ -73,7 +77,7 @@
 static sx126x_hal_context_t* context;
 
 static sx126x_cad_params_t cad_params = {
-    .cad_symb_nb     = CAD_SYMBOL_NUM,
+    .cad_symb_nb     = SINGLE_CAD_SYMBAL_NUM,
     .cad_detect_peak = CAD_DETECT_PEAK,
     .cad_detect_min  = CAD_DETECT_MIN,
     .cad_exit_mode   = CAD_EXIT_MODE,
@@ -84,12 +88,18 @@ static uint8_t  buffer[PAYLOAD_LENGTH];
 static uint32_t iteration_number        = 0;
 static uint32_t received_packet_counter = 0;
 static uint32_t detection_counter       = 0;
+
+static uint32_t all = 0;
+static uint32_t detect = 0;
+static uint32_t lost = 0;
 /*
  * -----------------------------------------------------------------------------
  * --- PRIVATE FUNCTIONS DECLARATION -------------------------------------------
  */
 
 static void start_cad_after_delay( uint16_t delay_ms );
+static void start_cad_after_delay_us( uint16_t delay_us );
+static uint32_t delay_n_symbols_us(uint32_t n, sx126x_lora_sf_t sf);
 
 static void optimize_cad_parameters( sx126x_lora_sf_t sf, sx126x_cad_params_t* cad_params );
 
@@ -109,6 +119,27 @@ int main( void )
     HAL_DBG_TRACE_INFO( "===== SX126x CAD example =====\n\n" );
     apps_common_sx126x_print_version_info( );
     HAL_DBG_TRACE_INFO( "CAD Exit Mode : %s\n", sx126x_cad_exit_modes_to_str( CAD_EXIT_MODE ) );
+
+#ifdef DOUBLE_CAD_MODE
+    HAL_DBG_TRACE_PRINTF( "Double CAD mode\n" );
+#else
+    HAL_DBG_TRACE_PRINTF( "Single CAD mode\n" );
+#endif
+
+    HAL_DBG_TRACE_PRINTF( "Freq: %d\n", RF_FREQ_IN_HZ );
+    HAL_DBG_TRACE_PRINTF( "SF: %d\n", LORA_SPREADING_FACTOR );
+    HAL_DBG_TRACE_PRINTF( "RX: BOOST\n" );
+    HAL_DBG_TRACE_PRINTF( "REF: TCXO\n" );
+    //HAL_DBG_TRACE_PRINTF( "CAD_SYMBOL_NUM: %d\n", CAD_SYMBOL_NUM );
+#ifdef DOUBLE_CAD_MODE
+    HAL_DBG_TRACE_PRINTF( "CAD_SYMBOL_NUM: (%d, %d)\n", 1 << SINGLE_CAD_SYMBAL_NUM, 1 << DOUBLE_CAD_SYMBAL_NUM );
+#else
+    HAL_DBG_TRACE_PRINTF( "CAD_SYMBOL_NUM: %d\n", 1 << SINGLE_CAD_SYMBAL_NUM );
+#endif
+    HAL_DBG_TRACE_PRINTF( "CODING_RATE: %d\n", LORA_CODING_RATE );
+    HAL_DBG_TRACE_PRINTF( "CAD_DETECT_PEAK: %d\n", CAD_DETECT_PEAK );
+    HAL_DBG_TRACE_PRINTF( "CAD_DETECT_MIN: %d\n\n", CAD_DETECT_MIN );
+
 
     apps_common_shield_init( );
     context = apps_common_sx126x_get_context( );
@@ -147,15 +178,46 @@ int main( void )
     }
 }
 
+bool detect_first = false;
+
 void on_cad_done_detected( void )
 {
+    all++;
+
+#ifdef DOUBLE_CAD_MODE
+    //HAL_DBG_TRACE_PRINTF( "cad detected\n" );
+    if(detect_first == false){
+        detect_first = true;
+    } else {  // detect for the 2nd time
+        detect_first = false;
+        detect++;
+        HAL_DBG_TRACE_PRINTF( "  DETECTED,all=%d,detect=%d,lost=%d\n", all, detect, lost );
+    }
+#else
+    detect++;
+    HAL_DBG_TRACE_PRINTF( "  DETECTED,all=%d,detect=%d,lost=%d\n", all, detect, lost );
+#endif
+
     detection_counter++;
-    HAL_DBG_TRACE_INFO( "Consecutive detection(s): %d\n", detection_counter );
+    //HAL_DBG_TRACE_INFO( "Consecutive detection(s): %d\n", detection_counter );
     switch( cad_params.cad_exit_mode )
     {
     case SX126X_CAD_ONLY:
-        HAL_DBG_TRACE_INFO( "Switch to StandBy mode\n" );
+        //HAL_DBG_TRACE_INFO( "Switch to StandBy mode\n" );
+#ifdef DOUBLE_CAD_MODE
+        if(detect_first == false){
+            cad_params.cad_symb_nb     = SINGLE_CAD_SYMBAL_NUM;
+            ASSERT_SX126X_RC( sx126x_set_cad_params( context, &cad_params ) );
+            start_cad_after_delay( DELAY_MS_BEFORE_CAD );
+        } else {
+            cad_params.cad_symb_nb     = DOUBLE_CAD_SYMBAL_NUM;
+            //cad_params.cad_detect_peak     = CAD_DETECT_PEAK;  // here can change to a different peak value
+            ASSERT_SX126X_RC( sx126x_set_cad_params( context, &cad_params ) );
+            start_cad_after_delay_us( delay_n_symbols_us( 1, LORA_SPREADING_FACTOR ) );
+        }
+#else
         start_cad_after_delay( DELAY_MS_BEFORE_CAD );
+#endif
         break;
     case SX126X_CAD_RX:
         HAL_DBG_TRACE_INFO( "Switch to RX mode\n" );
@@ -172,11 +234,25 @@ void on_cad_done_detected( void )
 
 void on_cad_done_undetected( void )
 {
+    //HAL_DBG_TRACE_PRINTF( "cad undetected\n" );
+    all++;
+    lost++;
+
+#ifdef DOUBLE_CAD_MODE
+    detect_first = false;
+#endif
+
+    HAL_DBG_TRACE_PRINTF( "UNDETECTED,all=%d,detect=%d,lost=%d\n", all, detect, lost );
+
     detection_counter = 0;
     switch( cad_params.cad_exit_mode )
     {
     case SX126X_CAD_ONLY:
-        HAL_DBG_TRACE_INFO( "Switch to StandBy mode\n" );
+        //HAL_DBG_TRACE_INFO( "Switch to StandBy mode\n" );
+#ifdef DOUBLE_CAD_MODE
+        cad_params.cad_symb_nb     = SINGLE_CAD_SYMBAL_NUM;
+        ASSERT_SX126X_RC( sx126x_set_cad_params( context, &cad_params ) );
+#endif
         start_cad_after_delay( DELAY_MS_BEFORE_CAD );
         break;
     case SX126X_CAD_RX:
@@ -228,9 +304,34 @@ void on_rx_error( void )
 
 static void start_cad_after_delay( uint16_t delay_ms )
 {
-    HAL_DBG_TRACE_PRINTF( "\nStart CAD, iteration %d\n", iteration_number++ );
+    //HAL_DBG_TRACE_PRINTF( "\nStart CAD, iteration %d\n", iteration_number++ );
     LL_mDelay( delay_ms );
     ASSERT_SX126X_RC( sx126x_set_cad( context ) );
+}
+
+void __attribute__( ( optimize( "O0" ) ) ) hal_mcu_wait_us( const int32_t microseconds )
+{
+    // Work @80MHz
+    const uint32_t nb_nop = microseconds * 1000 / 137;
+    for( uint32_t i = 0; i < nb_nop; i++ )
+    {
+        __NOP( );
+    }
+}
+
+#ifdef DOUBLE_CAD_MODE
+static void start_cad_after_delay_us( uint16_t delay_us )
+{
+    //HAL_DBG_TRACE_PRINTF( "Start CAD\n" );
+    hal_mcu_wait_us( delay_us );
+    ASSERT_SX126X_RC( sx126x_set_cad( context ) );
+    //HAL_DBG_TRACE_PRINTF( "\n" );  // Empty line to split CAD info display
+}
+#endif
+
+static uint32_t delay_n_symbols_us(uint32_t n, sx126x_lora_sf_t sf)
+{
+    return (1024 << (sf - SX126X_LORA_SF7)) * n;
 }
 
 #if USER_PROVIDED_CAD_PARAMETERS == False
